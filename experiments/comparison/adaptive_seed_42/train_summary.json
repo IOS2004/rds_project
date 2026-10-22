@@ -5,19 +5,24 @@
     "learning_rate": 0.001,
     "reg_weight": 0.0001,
     "batch_size": 1024,
-    "epochs": 25,
+    "epochs": 15,
     "eval_every": 5,
     "early_stop_patience": 6,
     "early_stop_metric": "Recall@20",
     "seed": 42,
-    "device": "cpu"
+    "device": "cpu",
+    "loss_type": "bpr",
+    "ccl_margin": 0.8,
+    "ccl_negative_weight": 10.0,
+    "num_negatives": 1,
+    "score_type": "dot"
   },
-  "best_epoch": 25,
-  "best_val_Recall@20": 0.30190255559154844,
+  "best_epoch": 15,
+  "best_val_Recall@20": 0.286130747948285,
   "test_metrics": {
-    "Recall@10": 0.19378754294447706,
-    "Recall@20": 0.31232268808008334,
-    "NDCG@10": 0.18545958135382307,
-    "NDCG@20": 0.21775502998380153
+    "Recall@10": 0.18388019779839535,
+    "Recall@20": 0.28766857978907545,
+    "NDCG@10": 0.17434618832845492,
+    "NDCG@20": 0.20121890526618355
   }
 }

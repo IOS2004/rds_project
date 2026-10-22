@@ -19,7 +19,7 @@ import torch.optim as optim
 
 from src.dataset import InteractionData
 from src.sampler import BPRSampler
-from src.loss import BPRLoss
+from src.loss import BPRLoss, CosineContrastiveLoss
 from src.metrics import evaluate_model
 
 
@@ -37,6 +37,12 @@ class TrainConfig:
     early_stop_metric: str = "Recall@20"
     seed: int = 42
     device: str = "cpu"
+    # Loss configuration
+    loss_type: str = "bpr"  # "bpr" or "ccl"
+    ccl_margin: float = 0.8
+    ccl_negative_weight: float = 10.0
+    num_negatives: int = 1
+    score_type: str = "dot"  # "dot" or "cosine"
 
 
 class Trainer:
@@ -49,6 +55,8 @@ class Trainer:
         norm_adj: torch.Tensor,
         config: TrainConfig,
         save_dir: str = "experiments/checkpoints",
+        loss_fn: Optional[nn.Module] = None,
+        sampler: Optional[BPRSampler] = None,
     ) -> None:
         self.model = model
         self.data = data
@@ -61,22 +69,37 @@ class Trainer:
         self.model.to(self.device)
         self.norm_adj = self.norm_adj.to(self.device)
 
-        self.loss_fn = BPRLoss(reg_weight=config.reg_weight)
+        if loss_fn is not None:
+            self.loss_fn = loss_fn
+        elif config.loss_type == "ccl":
+            self.loss_fn = CosineContrastiveLoss(
+                margin=config.ccl_margin,
+                negative_weight=config.ccl_negative_weight,
+                reg_weight=config.reg_weight,
+            )
+        else:
+            self.loss_fn = BPRLoss(reg_weight=config.reg_weight)
+
         self.optimizer = optim.Adam(self.model.parameters(), lr=config.learning_rate)
 
-        self.sampler = BPRSampler(
-            num_users=data.num_users,
-            num_items=data.num_items,
-            train_pairs=data.train_pairs,
-            train_user_positives=data.train_user_positives,
-            batch_size=config.batch_size,
-            seed=config.seed,
-        )
+        if sampler is not None:
+            self.sampler = sampler
+        else:
+            self.sampler = BPRSampler(
+                num_users=data.num_users,
+                num_items=data.num_items,
+                train_pairs=data.train_pairs,
+                train_user_positives=data.train_user_positives,
+                batch_size=config.batch_size,
+                num_negatives=config.num_negatives,
+                seed=config.seed,
+            )
 
+        self.loss_key = "ccl_loss" if config.loss_type == "ccl" else "bpr_loss"
         self.history: Dict[str, List[float]] = {
             "epoch": [],
             "train_loss": [],
-            "bpr_loss": [],
+            self.loss_key: [],
             "reg_loss": [],
             "val_Recall@10": [],
             "val_Recall@20": [],
@@ -88,29 +111,35 @@ class Trainer:
         """Execute one complete training epoch over all mini-batches."""
         self.model.train()
         total_loss_accum = 0.0
-        bpr_loss_accum = 0.0
+        main_loss_accum = 0.0
         reg_loss_accum = 0.0
         num_batches = 0
 
         for batch_u, batch_pos, batch_neg in self.sampler.iterate_batches(device=self.device):
             self.optimizer.zero_grad()
 
-            pos_scores, neg_scores, u0, pos0, neg0 = self.model(
+            model_outputs = self.model(
                 batch_u, batch_pos, batch_neg, self.norm_adj
             )
 
-            loss, bpr, reg = self.loss_fn(pos_scores, neg_scores, u0, pos0, neg0)
+            if self.config.loss_type == "ccl":
+                u_final, pos_final, neg_final, u0, pos0, neg0 = model_outputs
+                loss, main_loss, reg = self.loss_fn(u_final, pos_final, neg_final, u0, pos0, neg0)
+            else:
+                pos_scores, neg_scores, u0, pos0, neg0 = model_outputs
+                loss, main_loss, reg = self.loss_fn(pos_scores, neg_scores, u0, pos0, neg0)
+
             loss.backward()
             self.optimizer.step()
 
             total_loss_accum += loss.item()
-            bpr_loss_accum += bpr.item()
+            main_loss_accum += main_loss.item()
             reg_loss_accum += reg.item()
             num_batches += 1
 
         return {
             "train_loss": total_loss_accum / max(num_batches, 1),
-            "bpr_loss": bpr_loss_accum / max(num_batches, 1),
+            self.loss_key: main_loss_accum / max(num_batches, 1),
             "reg_loss": reg_loss_accum / max(num_batches, 1),
         }
 
@@ -125,6 +154,7 @@ class Trainer:
             k_list=(10, 20),
             user_batch_size=256,
             device=self.device,
+            score_type=self.config.score_type,
         )
         return metrics
 
@@ -135,7 +165,7 @@ class Trainer:
         patience_counter = 0
         best_model_path = os.path.join(self.save_dir, "best_model.pt")
 
-        print(f"Starting training for {self.config.epochs} epochs on device: {self.device}", flush=True)
+        print(f"Starting training for {self.config.epochs} epochs on device: {self.device} (loss={self.config.loss_type})", flush=True)
 
         for epoch in range(1, self.config.epochs + 1):
             epoch_loss = self.train_epoch()
@@ -143,7 +173,7 @@ class Trainer:
             # Record training metrics
             self.history["epoch"].append(epoch)
             self.history["train_loss"].append(epoch_loss["train_loss"])
-            self.history["bpr_loss"].append(epoch_loss["bpr_loss"])
+            self.history[self.loss_key].append(epoch_loss[self.loss_key])
             self.history["reg_loss"].append(epoch_loss["reg_loss"])
 
             # Periodic validation evaluation
@@ -153,9 +183,10 @@ class Trainer:
                     self.history[f"val_{k}"].append(v)
 
                 target_metric = val_metrics.get(self.config.early_stop_metric, 0.0)
+                loss_name = "CCL" if self.config.loss_type == "ccl" else "BPR"
                 print(
                     f"Epoch {epoch:03d} | "
-                    f"Loss: {epoch_loss['train_loss']:.4f} (BPR: {epoch_loss['bpr_loss']:.4f}, Reg: {epoch_loss['reg_loss']:.4f}) | "
+                    f"Loss: {epoch_loss['train_loss']:.4f} ({loss_name}: {epoch_loss[self.loss_key]:.4f}, Reg: {epoch_loss['reg_loss']:.4f}) | "
                     f"Val Recall@20: {val_metrics['Recall@20']:.4f} | "
                     f"Val NDCG@20: {val_metrics['NDCG@20']:.4f}",
                     flush=True,

@@ -14,10 +14,11 @@ Protocol:
 - Metrics are averaged across evaluated users who have at least one ground-truth item.
 """
 
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Set, Tuple, Optional
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 def compute_recall_at_k(recommended_items: List[int], ground_truth_items: Set[int], k: int) -> float:
@@ -59,6 +60,7 @@ def evaluate_model(
     k_list: Tuple[int, ...] = (10, 20),
     user_batch_size: int = 256,
     device: torch.device = torch.device("cpu"),
+    score_type: Optional[str] = None,
 ) -> Dict[str, float]:
     """Evaluate a recommendation model on test or validation users across top-N metrics.
 
@@ -70,12 +72,17 @@ def evaluate_model(
         k_list: Tuple of K cutoffs (e.g. 10, 20).
         user_batch_size: Batch size of users evaluated concurrently.
         device: Device on which evaluation takes place.
+        score_type: Scoring method: 'cosine' (L2 normalized dot product) or 'dot' (unnormalized).
+                    If None, inferred from model.score_type or defaults to 'dot'.
 
     Returns:
         metrics: Dictionary of metric names mapped to mean scores across evaluated users.
                  E.g. {"Recall@10": ..., "Recall@20": ..., "NDCG@10": ..., "NDCG@20": ...}
     """
     model.eval()
+
+    if score_type is None:
+        score_type = getattr(model, "score_type", "dot")
 
     # Users who have at least one ground-truth interaction in evaluation set
     eval_users = [u for u, items in eval_user_positives.items() if len(items) > 0]
@@ -86,6 +93,9 @@ def evaluate_model(
 
     # Precompute final user and item embeddings once to avoid repeated graph convolutions
     final_user_emb, final_item_emb, _ = model.forward_propagation(norm_adj)
+    if score_type == "cosine":
+        final_user_emb = F.normalize(final_user_emb, p=2, dim=-1, eps=1e-8)
+        final_item_emb = F.normalize(final_item_emb, p=2, dim=-1, eps=1e-8)
     final_item_emb_t = final_item_emb.t()  # Shape: (d, N)
 
     accumulators: Dict[str, float] = {f"Recall@{k}": 0.0 for k in k_list}
