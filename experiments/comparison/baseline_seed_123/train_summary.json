@@ -1,0 +1,23 @@
+{
+  "config": {
+    "embedding_dim": 64,
+    "num_layers": 3,
+    "learning_rate": 0.001,
+    "reg_weight": 0.0001,
+    "batch_size": 1024,
+    "epochs": 25,
+    "eval_every": 5,
+    "early_stop_patience": 6,
+    "early_stop_metric": "Recall@20",
+    "seed": 123,
+    "device": "cpu"
+  },
+  "best_epoch": 25,
+  "best_val_Recall@20": 0.28329476307122825,
+  "test_metrics": {
+    "Recall@10": 0.18496332786092207,
+    "Recall@20": 0.28325203894944145,
+    "NDCG@10": 0.17586247675944763,
+    "NDCG@20": 0.20168285469371733
+  }
+}

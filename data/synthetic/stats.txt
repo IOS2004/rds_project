@@ -1,0 +1,9 @@
+Dataset Statistics:
+  - Users: 100
+  - Items: 150
+  - Train interactions: 1,592
+  - Validation interactions: 142
+  - Test interactions: 142
+  - Total unique interactions: 1,876
+  - Density: 0.125067 (12.5067%)
+  - Sparsity: 0.874933 (87.4933%)
