@@ -15,6 +15,9 @@
   $$R_{ui} = \begin{cases} 1, & \text{if user } u \text{ has interacted with item } i \\ 0, & \text{otherwise} \end{cases}$$
 - **Key Observation / Hypothesis:** In standard GCNs for collaborative filtering (such as NGCF), feature transformation matrices ($W_1, W_2$) and nonlinear activations ($\sigma$) add burdensome computation, make training difficult, and do not improve (and often degrade) recommendation accuracy. Removing them simplifies GCN to its core mechanism: **linear neighborhood smoothing on the graph**.
 
+![LightGCN and Contrastive Architecture](system_architecture.png)
+*Figure 1: Full pipeline overview from raw interaction graph construction, normalized adjacency propagation, layer aggregation, scoring functions, to loss formulation objectives.*
+
 ---
 
 ## 2. Bipartite Graph Construction and Adjacency
@@ -91,9 +94,32 @@ $$\alpha_k = \operatorname{softmax}(\theta)_k = \frac{\exp(\theta_k)}{\sum_{j=0}
 - Initialization: $\theta_k = 0$ for all $k$, which yields $\alpha_k = \frac{1}{K+1}$ at initialization.
 - Optimization: Updated via backpropagation alongside embedding parameters.
 
+```mermaid
+graph TD
+    subgraph Initial ["Layer 0"]
+        E0["E(0) = [P; Q]"]
+    end
+    subgraph Propagation ["K-Step Graph Smoothing"]
+        E0 -->|"A_tilde * E(0)"| E1["E(1)"]
+        E1 -->|"A_tilde * E(1)"| E2["E(2)"]
+        E2 -->|"A_tilde * E(2)"| E3["E(3)"]
+    end
+    subgraph Aggregation ["Weighted Layer Aggregation"]
+        E0 --> WeightedSum["E* = sum_{k=0}^K alpha_k E(k)"]
+        E1 --> WeightedSum
+        E2 --> WeightedSum
+        E3 --> WeightedSum
+        Weights["Weights alpha_k:<br/>• Fixed Uniform: 1/(K+1)<br/>• Learnable Softmax: softmax(theta)_k"] -.-> WeightedSum
+    end
+    subgraph Outputs ["Final Embeddings"]
+        WeightedSum --> User["e_u* (User)"]
+        WeightedSum --> Item["e_i* (Item)"]
+    end
+```
+
 **Implementation Components:**
-- Baseline: `src/models/lightgcn.py` (`LightGCN`).
-- Adaptive: `src/models/adaptive_lightgcn.py` (`AdaptiveLightGCN`).
+- Baseline: [`src/models/lightgcn.py`](../src/models/lightgcn.py) (`LightGCN`).
+- Adaptive: [`src/models/adaptive_lightgcn.py`](../src/models/adaptive_lightgcn.py) (`AdaptiveLightGCN`).
 
 ---
 

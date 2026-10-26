@@ -321,8 +321,21 @@ def main():
     print("\n================ FINAL COMPARISON SUMMARY ================", flush=True)
     print(summary_df.round(4), flush=True)
 
-    # Generate plots
+    # Generate comparison plots
     plot_comparison(summary_df, adaptive_weights, args.save_dir)
+    try:
+        from scripts.generate_diagrams import (
+            plot_radar_and_relative_gain,
+            plot_loss_mechanisms_and_dead_zone,
+            plot_ablation_tuning_curves,
+            plot_representation_similarity_density,
+        )
+        plot_radar_and_relative_gain(os.path.join(args.save_dir, "radar_and_relative_gain.png"))
+        plot_loss_mechanisms_and_dead_zone(os.path.join(args.save_dir, "loss_mechanisms_and_dead_zone.png"))
+        plot_ablation_tuning_curves(os.path.join(args.save_dir, "ablation_tuning_curves.png"))
+        plot_representation_similarity_density(os.path.join(args.save_dir, "representation_similarity_density.png"))
+    except Exception as e:
+        print(f"Notice: Additional comparison diagrams could not be generated: {e}", flush=True)
 
     # Save complete JSON
     experiment_config = {

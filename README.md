@@ -10,12 +10,12 @@ An educational, modular, and mathematically faithful PyTorch implementation of t
 1. **LightGCN Paper:**
    > **“LightGCN: Simplifying and Powering Graph Convolution Network for Recommendation”**  
    > *Xiangnan He, Kuan Deng, Xiang Wang, Yan Li, Yongdong Zhang, and Meng Wang (SIGIR 2020)*  
-   > [arXiv:2002.02126](https://arxiv.org/abs/2002.02126) | Local PDF: [`lightGCN.pdf`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/lightGCN.pdf)
+   > [arXiv:2002.02126](https://arxiv.org/abs/2002.02126) | Local PDF: [`lightGCN.pdf`](lightGCN.pdf)
 
 2. **SimpleX Paper:**
    > **“SimpleX: A Simple and Strong Baseline for Collaborative Filtering”**  
    > *Kelong Mao, Jieming Zhu, Jinpeng Wang, Quanyu Dai, Zhenhua Dong, Xi Xiao, and Xiuqiang He (CIKM 2021)*  
-   > [arXiv:2109.12613](https://arxiv.org/abs/2109.12613) | Local PDF: [`simplex.pdf`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/simplex.pdf)
+   > [arXiv:2109.12613](https://arxiv.org/abs/2109.12613) | Local PDF: [`simplex.pdf`](simplex.pdf)
 
 This repository contains four distinct, rigorously evaluated stages:
 1. **Stage A — Faithful Baseline:** An exact implementation of the original LightGCN model with linear bipartite propagation, symmetric degree normalization, uniform multi-layer aggregation ($1 / (K+1)$), dot-product recommendation scoring, and mini-batch BPR loss with layer-0 embedding L2 regularization.
@@ -98,6 +98,40 @@ $$E^* = \sum_{k=0}^K \alpha_k E^{(k)}$$
 - **AdaptiveLightGCN:** Softmax learnable weights $\alpha_k = \operatorname{softmax}(\theta)_k$.
 - **LightGCN-CCL:** Uniform weights $\alpha_k = \frac{1}{K + 1}$ (retaining the exact LightGCN encoder).
 
+```mermaid
+graph TD
+    subgraph InputEmbeddings ["1. Layer-0 Initial Embeddings"]
+        U0["User Embedding P (M x d)"]
+        I0["Item Embedding Q (N x d)"]
+        E0["E(0) = [P; Q]"]
+        U0 --> E0
+        I0 --> E0
+    end
+
+    subgraph Propagation ["2. Linear Graph Convolution (LGC)"]
+        Adj["Normalized Adjacency: A_tilde = D^(-1/2) A D^(-1/2)"]
+        E0 --> |"A_tilde * E(0)"| E1["Layer 1: E(1)"]
+        Adj -.-> |"Symmetric Smoothing"| E1
+        E1 --> |"A_tilde * E(1)"| E2["Layer 2: E(2)"]
+        Adj -.-> |"Symmetric Smoothing"| E2
+        E2 --> |"A_tilde * E(2)"| E3["Layer 3: E(3)"]
+        Adj -.-> |"Symmetric Smoothing"| E3
+    end
+
+    subgraph Aggregation ["3. Multi-Layer Combination"]
+        E0 --> Comb["Weighted Sum: E* = sum_k alpha_k E(k)"]
+        E1 --> Comb
+        E2 --> Comb
+        E3 --> Comb
+        Weights["Weights alpha_k:<br/>• Uniform: 1/(K+1)<br/>• Adaptive: softmax(theta)_k"] -.-> Comb
+    end
+
+    subgraph FinalRepr ["4. Final Target Representations"]
+        Comb --> EU["Final User Embedding: e_u*"]
+        Comb --> EI["Final Item Embedding: e_i*"]
+    end
+```
+
 ### Bayesian Personalized Ranking (BPR) Loss
 Pairwise ranking objective:
 $$\mathcal{L}_{\text{BPR}} = -\frac{1}{|B|}\sum_{(u, i, j) \in B} \ln \sigma(\hat{y}_{ui} - \hat{y}_{uj}) + \frac{\lambda}{2|B|} \sum_{(u, i, j) \in B} \left(\|e_u^{(0)}\|^2 + \|e_i^{(0)}\|^2 + \|e_j^{(0)}\|^2\right)$$
@@ -117,35 +151,83 @@ At evaluation time:
 3. The model selects the top-$K$ items $\mathcal{R}_u(K)$ and evaluates:
    $$\text{Recall@K}(u) = \frac{|\mathcal{R}_u(K) \cap \mathcal{T}_u|}{|\mathcal{T}_u|}, \quad \text{NDCG@K}(u) = \frac{\text{DCG@K}(u)}{\text{IDCG@K}(u)}$$
 
+```mermaid
+graph LR
+    subgraph Embeddings ["Target Representations"]
+        U["User Vector e_u*"]
+        AllItems["All Item Vectors Q* (N x d)"]
+    end
+
+    subgraph Scoring ["Candidate Scoring"]
+        U & AllItems --> Score["Compute Similarity (Dot or Cosine)"]
+        Score --> FullScores["Raw Score Vector s_u in R^N"]
+    end
+
+    subgraph Masking ["Candidate Masking"]
+        TrainPos["Observed Training Positives T_u"] --> Mask["Set s_u[j] = -inf for j in T_u"]
+        FullScores --> Mask
+    end
+
+    subgraph Selection ["Top-K Ranking & Metric Evaluation"]
+        Mask --> TopK["Select Top-K Indices: R_u(K)"]
+        TopK --> Eval["Compare with Ground Truth T_u_test"]
+        Eval --> Metrics["Recall@K & NDCG@K"]
+    end
+```
+
 ---
 
 ## 2. Mathematical Formulations & Paper Mapping
 
 | Component | Paper Formula | Code Location |
 | :--- | :--- | :--- |
-| **Bipartite Graph** | $A = \begin{pmatrix} 0 & R \\ R^T & 0 \end{pmatrix}$ | [`src/graph.py:build_sparse_adjacency`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/src/graph.py) |
-| **Degree Normalization** | $\tilde{A} = D^{-1/2} A D^{-1/2}$ | [`src/graph.py:build_normalized_adjacency`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/src/graph.py) |
-| **Propagation** | $E^{(k+1)} = \tilde{A} E^{(k)}$ | [`src/models/lightgcn.py:forward_propagation`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/src/models/lightgcn.py) |
-| **Uniform Aggregation** | $E^* = \frac{1}{K+1}\sum_{k=0}^K E^{(k)}$ | [`src/models/lightgcn.py:forward_propagation`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/src/models/lightgcn.py) |
-| **Adaptive Aggregation** | $E^* = \sum_{k=0}^K \text{softmax}(\theta)_k E^{(k)}$ | [`src/models/adaptive_lightgcn.py:forward_propagation`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/src/models/adaptive_lightgcn.py) |
-| **BPR Recommendation Score** | $\hat{y}_{ui} = (e_u^*)^T e_i^*$ | [`src/models/lightgcn.py:predict`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/src/models/lightgcn.py) |
-| **BPR Pairwise Loss + Reg** | $-\ln\sigma(\hat{y}_{ui} - \hat{y}_{uj}) + \frac{\lambda}{2}\sum\|e^{(0)}\|^2$ | [`src/loss.py:BPRLoss`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/src/loss.py) |
-| **Hinge CCL Loss (SimpleX)** | $(1 - y_{ui}) + \frac{w}{\|N\|}\sum_{j \in N}\max(0, y_{uj} - m)$ | [`src/loss.py:CosineContrastiveLoss`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/src/loss.py) |
-| **Cosine Softmax Loss (InfoNCE)** | $-\ln \frac{\exp(\cos/\tau)}{\exp(\cos/\tau) + \sum_{j \in N}\exp(\cos_j/\tau)}$ | [`src/loss.py:CosineSoftmaxLoss`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/src/loss.py) |
-| **CCL Cosine Scoring** | $y_{ui} = \frac{(e_u^*)^T e_i^*}{\|e_u^*\|_2 \|e_i^*\|_2}$ | [`src/models/lightgcn_ccl.py:predict`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/src/models/lightgcn_ccl.py) |
-| **Multi-Negative Sampler** | $j \sim \{0, \dots, N-1\} \setminus N_u$, $\|N\| \ge 1$ | [`src/sampler.py:BPRSampler`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/src/sampler.py) |
-| **Metrics Evaluation** | Full candidate Recall@K, NDCG@K (dot or cosine) | [`src/metrics.py:evaluate_model`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/src/metrics.py) |
+| **Bipartite Graph** | $A = \begin{pmatrix} 0 & R \\ R^T & 0 \end{pmatrix}$ | [`src/graph.py:build_sparse_adjacency`](src/graph.py) |
+| **Degree Normalization** | $\tilde{A} = D^{-1/2} A D^{-1/2}$ | [`src/graph.py:build_normalized_adjacency`](src/graph.py) |
+| **Propagation** | $E^{(k+1)} = \tilde{A} E^{(k)}$ | [`src/models/lightgcn.py:forward_propagation`](src/models/lightgcn.py) |
+| **Uniform Aggregation** | $E^* = \frac{1}{K+1}\sum_{k=0}^K E^{(k)}$ | [`src/models/lightgcn.py:forward_propagation`](src/models/lightgcn.py) |
+| **Adaptive Aggregation** | $E^* = \sum_{k=0}^K \text{softmax}(\theta)_k E^{(k)}$ | [`src/models/adaptive_lightgcn.py:forward_propagation`](src/models/adaptive_lightgcn.py) |
+| **BPR Recommendation Score** | $\hat{y}_{ui} = (e_u^*)^T e_i^*$ | [`src/models/lightgcn.py:predict`](src/models/lightgcn.py) |
+| **BPR Pairwise Loss + Reg** | $-\ln\sigma(\hat{y}_{ui} - \hat{y}_{uj}) + \frac{\lambda}{2}\sum\|e^{(0)}\|^2$ | [`src/loss.py:BPRLoss`](src/loss.py) |
+| **Hinge CCL Loss (SimpleX)** | $(1 - y_{ui}) + \frac{w}{\|N\|}\sum_{j \in N}\max(0, y_{uj} - m)$ | [`src/loss.py:CosineContrastiveLoss`](src/loss.py) |
+| **Cosine Softmax Loss (InfoNCE)** | $-\ln \frac{\exp(\cos/\tau)}{\exp(\cos/\tau) + \sum_{j \in N}\exp(\cos_j/\tau)}$ | [`src/loss.py:CosineSoftmaxLoss`](src/loss.py) |
+| **CCL Cosine Scoring** | $y_{ui} = \frac{(e_u^*)^T e_i^*}{\|e_u^*\|_2 \|e_i^*\|_2}$ | [`src/models/lightgcn_ccl.py:predict`](src/models/lightgcn_ccl.py) |
+| **Multi-Negative Sampler** | $j \sim \{0, \dots, N-1\} \setminus N_u$, $\|N\| \ge 1$ | [`src/sampler.py:BPRSampler`](src/sampler.py) |
+| **Metrics Evaluation** | Full candidate Recall@K, NDCG@K (dot or cosine) | [`src/metrics.py:evaluate_model`](src/metrics.py) |
 
 ---
 
 ## 3. Project Architecture
+
+![End-to-End System Architecture](docs/system_architecture.png)
+*Figure 1: End-to-end architecture flowchart of the LightGCN, AdaptiveLayer, and Contrastive Learning framework.*
+
+```mermaid
+graph TD
+    RawData["Raw Interaction Data (MovieLens / Synthetic)"] --> Preprocess["src/dataset.py: ID Remapping & Leak-Free Stratified Split"]
+    Preprocess --> GraphBuild["src/graph.py: Bipartite Adjacency & Symmetric Normalization"]
+    GraphBuild --> ModelFactory{"Model Selection"}
+
+    ModelFactory --> |"Baseline"| M1["src/models/lightgcn.py<br/>(Uniform alpha, Dot Product)"]
+    ModelFactory --> |"Adaptive"| M2["src/models/adaptive_lightgcn.py<br/>(Learnable Softmax alpha, Dot Product)"]
+    ModelFactory --> |"CCL / Softmax"| M3["src/models/lightgcn_ccl.py<br/>(Uniform alpha, Cosine Similarity)"]
+
+    M1 & M2 --> BPR["src/loss.py: BPRLoss (1 Negative)"]
+    M3 --> LossChoice{"Loss Formulation"}
+    LossChoice --> |"Hinge CCL"| CCL["src/loss.py: CosineContrastiveLoss (|N| >= 50)"]
+    LossChoice --> |"Cosine Softmax"| SoftmaxLoss["src/loss.py: CosineSoftmaxLoss (|N| >= 50)"]
+
+    BPR & CCL & SoftmaxLoss --> Trainer["src/trainer.py: Optimization Loop & Checkpointing"]
+    Trainer --> Evaluator["src/metrics.py: Full-Catalog Candidate Top-K Evaluator"]
+    Evaluator --> Visualizer["scripts/generate_diagrams.py: Multi-Model Publication Visualizations"]
+```
 
 ```text
 rds_project/
 ├── lightGCN.pdf                  # Original LightGCN paper (He et al., SIGIR 2020)
 ├── simplex.pdf                   # SimpleX research paper (Mao et al., CIKM 2021)
 ├── docs/
-│   └── paper_notes.md            # In-depth notes, mathematical formulations, and symbols
+│   ├── paper_notes.md            # In-depth notes, mathematical formulations, and symbols
+│   └── system_architecture.png   # End-to-end architectural system diagram (Figure 1)
 ├── data/
 │   ├── download_data.py          # Data download and split pipeline (MovieLens-100K / Synthetic)
 │   ├── ml-100k/                  # Preprocessed dataset splits (train.csv, val.csv, test.csv)
@@ -179,13 +261,20 @@ rds_project/
 │   ├── train_adaptive.py         # Trains AdaptiveLightGCN model (BPR)
 │   ├── train_lightgcn_ccl.py     # Trains LightGCN-CCL (supports Hinge CCL and Softmax InfoNCE)
 │   ├── run_comparison.py         # Controlled 5-model multi-seed benchmark and publication plots
-│   └── run_ccl_improvements.py   # Margin calibration and softmax temperature ablation runner
+│   ├── run_ccl_improvements.py   # Margin calibration and softmax temperature ablation runner
+│   └── generate_diagrams.py      # Generates comprehensive publication-grade visual suite (7 figures)
 ├── experiments/                  # Checkpoints, summaries, comparison CSVs, and plots
-│   └── comparison/
-│       ├── metric_comparison.png # 5-model comparative bar chart with error bars
-│       ├── learned_weights.png   # Adaptive layer weights visualization across seeds
-│       ├── comparison_summary.csv# Aggregated mean and std metrics across seeds
-│       └── raw_seed_metrics.csv  # Raw per-seed evaluation results
+│   ├── comparison/
+│   │   ├── metric_comparison.png                   # Grouped bar chart with error bars (Figure 2)
+│   │   ├── radar_and_relative_gain.png             # Multi-metric radar chart & relative gain % (Figure 3)
+│   │   ├── learned_weights.png                     # Adaptive layer combination weights (Figure 4)
+│   │   ├── loss_mechanisms_and_dead_zone.png       # Gradient repulsion & hinge dead zone (Figure 5)
+│   │   ├── ablation_tuning_curves.png              # Margin & temperature sensitivity curves (Figure 6)
+│   │   ├── representation_similarity_density.png   # Cosine similarity KDE distributions (Figure 7)
+│   │   ├── comparison_summary.csv                  # Aggregated mean and std metrics across seeds
+│   │   └── raw_seed_metrics.csv                    # Raw per-seed evaluation results
+│   └── ccl_improvements/
+│       └── ccl_improvements_summary.csv            # Loss parameter ablation results
 ├── requirements.txt              # Project dependencies
 └── README.md                     # Comprehensive project documentation
 ```
@@ -220,16 +309,16 @@ pytest tests/ -v
 ```
 
 All 33 tests execute in under 5 seconds:
-* [`tests/test_adaptive_model.py`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/tests/test_adaptive_model.py): 3 tests (uniform initialization, gradient flow to $\theta$, baseline equivalence).
-* [`tests/test_ccl_loss.py`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/tests/test_ccl_loss.py): 8 tests (hand-calculated numerical example, below-margin zero penalty, above-margin linear penalty, $|N|$ averaging, numerical stability on zero vectors, gradient flow to initial embeddings, regularization scaling, cosine softmax contrastive loss).
-* [`tests/test_dataset.py`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/tests/test_dataset.py): 3 tests (ID mapping, deduplication, non-leakage).
-* [`tests/test_graph.py`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/tests/test_graph.py): 3 tests (bipartite construction, symmetry, degree normalization).
-* [`tests/test_lightgcn_ccl.py`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/tests/test_lightgcn_ccl.py): 3 tests (forward pass/prediction, training loop step, cosine evaluation finiteness).
-* [`tests/test_loss.py`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/tests/test_loss.py): 2 tests (BPR loss ordering and L2 reg).
-* [`tests/test_metrics.py`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/tests/test_metrics.py): 2 tests (hand-calculated Recall/NDCG, candidate exclusion).
-* [`tests/test_model.py`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/tests/test_model.py): 2 tests (manual propagation step, recommendation scoring).
-* [`tests/test_reproducibility.py`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/tests/test_reproducibility.py): 1 test (seed reproducibility).
-* [`tests/test_sampler.py`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/tests/test_sampler.py): 6 tests (single/multi-negative exclusion, shapes, invalid counts, dense-user edge case, batch iteration).
+* [`tests/test_adaptive_model.py`](tests/test_adaptive_model.py): 3 tests (uniform initialization, gradient flow to $\theta$, baseline equivalence).
+* [`tests/test_ccl_loss.py`](tests/test_ccl_loss.py): 8 tests (hand-calculated numerical example, below-margin zero penalty, above-margin linear penalty, $|N|$ averaging, numerical stability on zero vectors, gradient flow to initial embeddings, regularization scaling, cosine softmax contrastive loss).
+* [`tests/test_dataset.py`](tests/test_dataset.py): 3 tests (ID mapping, deduplication, non-leakage).
+* [`tests/test_graph.py`](tests/test_graph.py): 3 tests (bipartite construction, symmetry, degree normalization).
+* [`tests/test_lightgcn_ccl.py`](tests/test_lightgcn_ccl.py): 3 tests (forward pass/prediction, training loop step, cosine evaluation finiteness).
+* [`tests/test_loss.py`](tests/test_loss.py): 2 tests (BPR loss ordering and L2 reg).
+* [`tests/test_metrics.py`](tests/test_metrics.py): 2 tests (hand-calculated Recall/NDCG, candidate exclusion).
+* [`tests/test_model.py`](tests/test_model.py): 2 tests (manual propagation step, recommendation scoring).
+* [`tests/test_reproducibility.py`](tests/test_reproducibility.py): 1 test (seed reproducibility).
+* [`tests/test_sampler.py`](tests/test_sampler.py): 6 tests (single/multi-negative exclusion, shapes, invalid counts, dense-user edge case, batch iteration).
 
 ---
 
@@ -337,16 +426,16 @@ python scripts/run_comparison.py \
 ```
 
 This generates:
-- [`raw_seed_metrics.csv`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/experiments/comparison/raw_seed_metrics.csv): Individual seed evaluation metrics.
-- [`comparison_summary.csv`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/experiments/comparison/comparison_summary.csv): Aggregated means and standard deviations.
-- [`comparison_results.json`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/experiments/comparison/comparison_results.json): Complete machine-readable experimental log and configuration.
-- [`metric_comparison.png`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/experiments/comparison/metric_comparison.png): Publication-quality 5-model grouped bar chart with error bars and annotated peak values.
-- [`learned_weights.png`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/experiments/comparison/learned_weights.png): Adaptive layer weights visualization across seeds.
+- [`raw_seed_metrics.csv`](experiments/comparison/raw_seed_metrics.csv): Individual seed evaluation metrics.
+- [`comparison_summary.csv`](experiments/comparison/comparison_summary.csv): Aggregated means and standard deviations.
+- [`comparison_results.json`](experiments/comparison/comparison_results.json): Complete machine-readable experimental log and configuration.
+- [`metric_comparison.png`](experiments/comparison/metric_comparison.png): Publication-quality 5-model grouped bar chart with error bars and annotated peak values.
+- [`learned_weights.png`](experiments/comparison/learned_weights.png): Adaptive layer weights visualization across seeds.
 
 ### 9.1 Controlled Empirical Results (MovieLens-100K)
 The table below reports the results from our controlled run across random seeds `42` and `123` on MovieLens-100K (15 epochs, full catalog candidate ranking with training item masking):
 
-| Model Variant | Training Objective | Negative Ratio ($|N|$) | Scoring Function | Recall@10 | Recall@20 | NDCG@10 | NDCG@20 |
+| Model Variant | Training Objective | Negative Ratio ($\|N\|$) | Scoring Function | Recall@10 | Recall@20 | NDCG@10 | NDCG@20 |
 | :--- | :--- | :---: | :--- | :---: | :---: | :---: | :---: |
 | **LightGCN (BPR)** | Pairwise BPR | 1 | Dot Product | $0.1794 \pm 0.0006$ | $0.2693 \pm 0.0026$ | $0.1616 \pm 0.0006$ | $0.1849 \pm 0.0011$ |
 | **AdaptiveLightGCN (BPR)** | Pairwise BPR | 1 | Dot Product | $0.1826 \pm 0.0018$ | $0.2851 \pm 0.0036$ | $0.1729 \pm 0.0020$ | $0.2001 \pm 0.0016$ |
@@ -355,12 +444,23 @@ The table below reports the results from our controlled run across random seeds 
 | **LightGCN-Softmax (tau=0.15)** | **Softmax Contrastive ($\tau=0.15$)** | **50** | **Cosine Similarity** | **$0.2422 \pm 0.0026$** | **$0.3693 \pm 0.0019$** | **$0.2317 \pm 0.0011$** | **$0.2658 \pm 0.0005$** |
 | **Relative $\Delta$ (Softmax vs Baseline)** | — | — | — | **$+35.0\%$** | **$+37.1\%$** | **$+43.4\%$** | **$+43.8\%$** |
 
-*(Values can be verified directly in [`experiments/comparison/comparison_summary.csv`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/experiments/comparison/comparison_summary.csv).)*
+*(Values can be verified directly in [`experiments/comparison/comparison_summary.csv`](experiments/comparison/comparison_summary.csv).)*
 
 ### 9.2 Key Findings and Visualizations
-1. **Contrastive Loss vs. Pairwise BPR:** Moving from pairwise BPR (1 negative) to Cosine Contrastive Loss (50 negatives) produces a massive jump in recommendation quality ($0.2693 \rightarrow 0.3464$ Recall@20, a **$+28.6\%$** improvement).
-2. **Layer Adaptation:** Adaptive layer weighting provides a modest, statistically significant gain over baseline LightGCN ($0.2693 \rightarrow 0.2851$ Recall@20), placing higher weight on intermediate propagation layers ($k=1, 2$).
-3. **Smooth Softmax Contrastive Loss Dominates:** Cosine Softmax Contrastive Loss ($\tau=0.15$) sets the benchmark high watermark at **$0.3693$ Recall@20** and **$0.2658$ NDCG@20** (**$+37.1\%$** over baseline LightGCN).
+
+![Metric Comparison Across Evaluated Models](experiments/comparison/metric_comparison.png)
+*Figure 2: Comprehensive 5-model evaluation across Recall@10, Recall@20, NDCG@10, and NDCG@20 on MovieLens-100K (mean $\pm$ standard deviation across seeds 42 and 123).*
+
+![Radar Comparison and Relative Gain](experiments/comparison/radar_and_relative_gain.png)
+*Figure 3: Left: Radar chart illustrating multi-metric performance profiles across all five models. Right: Relative percentage gain over baseline LightGCN (BPR), demonstrating progressive improvements across layer adaptation, hinge CCL, and cosine softmax contrastive learning.*
+
+![Learned Layer Aggregation Weights](experiments/comparison/learned_weights.png)
+*Figure 4: Learned layer aggregation weights $\alpha_k = \operatorname{softmax}(\theta)_k$ for AdaptiveLightGCN across seeds. Notice that the model allocates higher weight to intermediate graph propagation layers ($k=1, 2$) over the initial layer ($k=0$), capturing higher-order collaborative signals.*
+
+#### Empirical Takeaways:
+1. **Contrastive Loss vs. Pairwise BPR:** Moving from pairwise BPR (1 negative) to Cosine Contrastive Loss (50 negatives) produces a dramatic improvement in recommendation quality ($0.2693 \rightarrow 0.3464$ Recall@20, a **$+28.6\%$** relative improvement, and $0.1849 \rightarrow 0.2537$ NDCG@20, a **$+37.2\%$** relative improvement).
+2. **Layer Adaptation:** Adaptive layer weighting provides a modest, statistically significant gain over baseline LightGCN ($0.2693 \rightarrow 0.2851$ Recall@20, a **$+5.9\%$** gain), placing higher weight on intermediate propagation layers ($k=1, 2$).
+3. **Smooth Softmax Contrastive Loss Dominates:** Cosine Softmax Contrastive Loss ($\tau=0.15$) establishes the highest benchmark performance at **$0.3693$ Recall@20** and **$0.2658$ NDCG@20** (**$+37.1\%$** and **$+43.8\%$** relative gains over baseline LightGCN).
 
 ---
 
@@ -390,9 +490,26 @@ In Section 4.5 and Table 3 of the SimpleX paper (*SimpleX: A Simple and Strong B
 ### Motivation: The "Hinge Dead Zone" Bottleneck
 While standard `LightGCN-CCL` with hinge margin $m=0.8$ achieves $\sim 0.3489$ Recall@20, representation diagnostics revealed that **$81.5\%$ of negative samples have cosine similarity $< 0.8$**, contributing **zero gradient** ($\max(0, \cos - 0.8) = 0$).
 
-To eliminate this dead zone, we investigated two loss extensions (both using the identical [`LightGCNCCL`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/src/models/lightgcn_ccl.py) architecture without changing parameters or graph propagation):
-1. **Margin Calibration for Hinge CCL:** Lowering margin $m \in \{0.6, 0.4\}$ in [`CosineContrastiveLoss`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/src/loss.py) to activate a wider pool of hard negatives.
-2. **Cosine Softmax Contrastive Loss (Sampled InfoNCE):** Our project's temperature-scaled sampled cosine-softmax contrastive objective ([`CosineSoftmaxLoss`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/src/loss.py#L231)), inspired by softmax-based contrastive learning (e.g., InfoNCE / SimCLR), applied across the identical 50 sampled negatives:
+![Loss Mechanisms and Dead Zone](experiments/comparison/loss_mechanisms_and_dead_zone.png)
+*Figure 5: Left: Theoretical gradient magnitude $|\partial \mathcal{L} / \partial y_{uj}|$ with respect to negative cosine similarity $y_{uj}$, demonstrating the zero-gradient cutoff for Hinge CCL versus continuous smooth repulsion for Cosine Softmax. Right: Empirical histogram of unobserved negative similarities under LightGCN-CCL ($m=0.8$), highlighting that $81.5\%$ of samples reside in the inactive dead zone.*
+
+```mermaid
+graph TD
+    subgraph HingeMechanism ["Hinge CCL Mechanism (Hard Threshold)"]
+        Neg1["Sampled Negative y_uj"] --> Check{"y_uj > m (e.g. 0.8)?"}
+        Check -->|"No (81.5% of negatives)"| ZeroGrad["Gradient = 0<br/>(Dead Zone: No Learning Signal)"]
+        Check -->|"Yes (18.5% of negatives)"| ActiveGrad["Gradient = -w/|N|<br/>(Constant Linear Repulsion)"]
+    end
+
+    subgraph SoftmaxMechanism ["Cosine Softmax Mechanism (Continuous Competition)"]
+        Neg2["Sampled Negative y_uj"] --> SoftmaxExp["exp(y_uj / tau)"]
+        SoftmaxExp --> SmoothGrad["Gradient = -p_uj / tau<br/>(Every negative continuously contributes,<br/>exponentially scaling with hardness)"]
+    end
+```
+
+To eliminate this dead zone, we investigated two loss extensions (both using the identical [`LightGCNCCL`](src/models/lightgcn_ccl.py) architecture without changing parameters or graph propagation):
+1. **Margin Calibration for Hinge CCL:** Lowering margin $m \in \{0.6, 0.4\}$ in [`CosineContrastiveLoss`](src/loss.py) to activate a wider pool of hard negatives.
+2. **Cosine Softmax Contrastive Loss (Sampled InfoNCE):** Our project's temperature-scaled sampled cosine-softmax contrastive objective ([`CosineSoftmaxLoss`](src/loss.py#L231)), inspired by softmax-based contrastive learning (e.g., InfoNCE / SimCLR), applied across the identical 50 sampled negatives:
    $$\mathcal{L}_{\text{softmax}} = -\frac{1}{|B|} \sum_{(u, i) \in B} \ln \frac{\exp(\cos(e_u^*, e_i^*) / \tau)}{\exp(\cos(e_u^*, e_i^*) / \tau) + \sum_{j \in N_u} \exp(\cos(e_u^*, e_j^*) / \tau)}$$
 
 ### Empirical Ablation Results (MovieLens-100K)
@@ -407,12 +524,23 @@ To eliminate this dead zone, we investigated two loss extensions (both using the
 | **Cosine Softmax ($\tau=0.10$)** | Temperature $\tau=0.10$ | $0.2265$ | $0.3478$ | $0.2179$ | $0.2508$ | $-0.3\%$ |
 | **Cosine Softmax ($\tau=0.07$)** | Temperature $\tau=0.07$ | $0.2045$ | $0.3196$ | $0.1939$ | $0.2258$ | $-8.4\%$ |
 
-*(Results stored in [`experiments/ccl_improvements/ccl_improvements_summary.csv`](file:///c:/Users/om%20sahu/OneDrive/Desktop/rds_project/experiments/ccl_improvements/ccl_improvements_summary.csv).)*
+*(Results stored in [`experiments/ccl_improvements/ccl_improvements_summary.csv`](experiments/ccl_improvements/ccl_improvements_summary.csv).)*
+
+![Ablation Parameter Tuning Curves](experiments/comparison/ablation_tuning_curves.png)
+*Figure 6: Left: Hinge margin calibration sweep ($m \in [0.4, 0.8]$), showing that lowering the hinge margin slightly shifts Top-10 vs Top-20 trade-offs but plateauing near 0.349. Right: Softmax temperature sweep ($\tau \in [0.07, 0.15]$), revealing an optimal operating regime at $\tau=0.15$ where repulsive competition balances hard-negative focus with gradient stability.*
+
+### Representation Geometry and Separation Density
+
+To inspect how each loss objective shapes the underlying embedding geometry on the unit hypersphere, we extracted user and item representations from the trained models on the test set and computed kernel density estimates (KDE) of positive pairs vs. unobserved negative pairs:
+
+![Representation Cosine Similarity Density Distributions](experiments/comparison/representation_similarity_density.png)
+*Figure 7: Empirical cosine similarity KDE distributions between user representations and test positive items (green curves) versus unobserved items (red curves) across four model variants. Note how LightGCN-CCL ($m=0.8$) creates an artificial pileup of negatives just below the margin threshold, whereas Cosine Softmax ($\tau=0.15$) achieves a wide separation margin $\Delta = 0.290$ without representation collapse.*
 
 ### Why Cosine Softmax Contrastive Loss Outperforms Hinge CCL:
-1. **No Dead Zone:** Every sampled negative continuously pushes back with smooth non-zero gradients, dynamically weighted by similarity.
-2. **Optimal Hard-Negative Temperature:** At $\tau=0.15$, hard negatives receive exponentially higher penalties without causing gradient explosion or representation instability.
-3. **Significant Leap:** Reaches **$0.3706$ Recall@20** and **$0.2655$ NDCG@20** on MovieLens-100K — a **$+37.6\%$ relative gain** over baseline LightGCN and $+6.2\%$ over standard hinge CCL.
+1. **Elimination of the Dead Zone:** In Hinge CCL, any negative with similarity $\le m$ yields zero gradient. In Cosine Softmax, every unobserved negative sample exerts a continuous repulsive force, preventing negatives from accumulating into high-density clusters below the margin.
+2. **Exponential Hard-Negative Weighting:** Softmax normalization $\frac{\exp(y_{uj}/\tau)}{\sum \exp}$ automatically assigns higher probability (and thus larger repulsive gradients) to harder negatives without requiring manual heuristic threshold tuning.
+3. **Wider Angular Separation Margin ($\Delta$):** As shown in Figure 7, Cosine Softmax pushes the mean negative cosine similarity down to $-0.07$ while keeping positive similarity at $+0.22$ ($\Delta = 0.290$), compared to Hinge CCL ($m=0.8$) where negative similarity clusters at $+0.76$ ($\Delta = 0.047$).
+4. **Significant Benchmark Improvement:** Reaches **$0.3706$ Recall@20** and **$0.2655$ NDCG@20** on MovieLens-100K — a **$+37.6\%$ relative gain** over baseline LightGCN and $+6.2\%$ over standard hinge CCL.
 
 ---
 
@@ -542,12 +670,23 @@ python scripts/run_comparison.py \
     --save_dir experiments/comparison
 ```
 
+To standalone-generate or regenerate the complete suite of publication-quality comparative figures, architectural diagrams, sensitivity curves, and representation KDE distributions:
+
+```bash
+python scripts/generate_diagrams.py
+```
+
 Artifacts generated:
-- `experiments/comparison/metric_comparison.png` (High-resolution 300 DPI bar chart)
-- `experiments/comparison/learned_weights.png` (Layer combination weights plot)
-- `experiments/comparison/comparison_summary.csv` (Aggregated Mean $\pm$ Std table)
-- `experiments/comparison/raw_seed_metrics.csv` (Per-seed metrics)
-- `experiments/comparison/comparison_results.json` (Full training metadata)
+- `docs/system_architecture.png`: End-to-end framework flowchart (Figure 1).
+- `experiments/comparison/metric_comparison.png`: 5-model comparative grouped bar chart with error bars and value annotations (Figure 2).
+- `experiments/comparison/radar_and_relative_gain.png`: Multi-metric radar chart and relative % gain bar chart over baseline (Figure 3).
+- `experiments/comparison/learned_weights.png`: Adaptive layer combination weights distribution across seeds (Figure 4).
+- `experiments/comparison/loss_mechanisms_and_dead_zone.png`: Theoretical gradient repulsion curves and empirical hinge dead zone histogram (Figure 5).
+- `experiments/comparison/ablation_tuning_curves.png`: Margin calibration and softmax temperature sensitivity curves (Figure 6).
+- `experiments/comparison/representation_similarity_density.png`: Empirical cosine similarity KDE distributions showing angular separation margins (Figure 7).
+- `experiments/comparison/comparison_summary.csv`: Aggregated Mean $\pm$ Std metric table.
+- `experiments/comparison/raw_seed_metrics.csv`: Per-seed metric records.
+- `experiments/comparison/comparison_results.json`: Full machine-readable training metadata.
 
 ### Step 6: Running Loss Formulation Ablations
 To explore hinge margin calibration ($m=0.8, 0.6, 0.4$) versus cosine softmax temperatures ($\tau=0.15, 0.10, 0.07$):
@@ -621,13 +760,19 @@ for rank, (item_idx, score) in enumerate(zip(top_items.tolist(), top_scores.toli
 
 ### Step 8: Inspecting Outputs, Checkpoints, and Visualizations
 
-Every training run automatically generates structured artifacts within its respective `--save_dir`:
+Every training and benchmarking run generates structured artifacts within its respective directory:
 
-| Output File | Format | Description |
-| :--- | :--- | :--- |
-| `best_model.pt` | PyTorch Binary | Serialized state dictionary of the best model (by validation Recall@20) and training config. |
-| `train_summary.json` | JSON | Best epoch index, validation score, test set metrics, and total training runtime. |
-| `training_history.csv` | CSV | Per-epoch training loss, validation Recall@K, and validation NDCG@K for convergence analysis. |
-| `metric_comparison.png` | PNG (300 DPI) | Publication-grade comparative grouped bar chart with error bars across evaluated models. |
-| `learned_weights.png` | PNG (300 DPI) | Bar plot displaying learned layer combination weights $\alpha_k$ for AdaptiveLightGCN. |
-| `comparison_summary.csv` | CSV | Tabular summary containing mean and standard deviation for all Top-N ranking metrics. |
+| Output File | Location | Format | Description |
+| :--- | :--- | :--- | :--- |
+| `best_model.pt` | Run directories | PyTorch Binary | Serialized state dictionary of best model (by validation Recall@20) and config. |
+| `train_summary.json` | Run directories | JSON | Best epoch, validation score, test set metrics, and total training runtime. |
+| `training_history.csv` | Run directories | CSV | Per-epoch training loss, validation Recall@K, and validation NDCG@K for convergence. |
+| `system_architecture.png` | [`docs/`](docs/) | PNG (300 DPI) | Figure 1: End-to-end framework architecture flowchart. |
+| `metric_comparison.png` | [`experiments/comparison/`](experiments/comparison/) | PNG (300 DPI) | Figure 2: Grouped bar chart with error bars across all 5 evaluated models. |
+| `radar_and_relative_gain.png` | [`experiments/comparison/`](experiments/comparison/) | PNG (300 DPI) | Figure 3: Multi-metric radar chart and relative % gain bar chart over baseline. |
+| `learned_weights.png` | [`experiments/comparison/`](experiments/comparison/) | PNG (300 DPI) | Figure 4: Learned layer aggregation weights $\alpha_k$ for AdaptiveLightGCN across seeds. |
+| `loss_mechanisms_and_dead_zone.png` | [`experiments/comparison/`](experiments/comparison/) | PNG (300 DPI) | Figure 5: Gradient magnitude curves and empirical hinge dead zone distribution. |
+| `ablation_tuning_curves.png` | [`experiments/comparison/`](experiments/comparison/) | PNG (300 DPI) | Figure 6: Dual-axis margin calibration and softmax temperature sensitivity curves. |
+| `representation_similarity_density.png` | [`experiments/comparison/`](experiments/comparison/) | PNG (300 DPI) | Figure 7: Empirical cosine similarity KDE distributions and separation margins. |
+| `comparison_summary.csv` | [`experiments/comparison/`](experiments/comparison/) | CSV | Tabular summary containing mean and standard deviation across seeds. |
+| `comparison_results.json` | [`experiments/comparison/`](experiments/comparison/) | JSON | Machine-readable record containing all per-seed runs and configurations. |
