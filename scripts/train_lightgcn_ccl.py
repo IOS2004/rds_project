@@ -65,6 +65,19 @@ def main():
         choices=["cosine", "dot"],
         help="Scoring metric for evaluation and ranking ('cosine' or 'dot', default: 'cosine').",
     )
+    parser.add_argument(
+        "--loss_type",
+        type=str,
+        default="ccl",
+        choices=["ccl", "cosine_softmax"],
+        help="Loss objective: 'ccl' (Hinge Margin Cosine Contrastive Loss) or 'cosine_softmax' (Sampled InfoNCE).",
+    )
+    parser.add_argument(
+        "--softmax_temperature",
+        type=float,
+        default=0.15,
+        help="Temperature parameter tau for cosine_softmax loss (default: 0.15).",
+    )
     args = parser.parse_args()
 
     # Reproducibility
@@ -103,9 +116,10 @@ def main():
         early_stop_patience=args.early_stop_patience,
         early_stop_metric="Recall@20",
         seed=args.seed,
-        loss_type="ccl",
+        loss_type=args.loss_type,
         ccl_margin=args.ccl_margin,
         ccl_negative_weight=args.ccl_negative_weight,
+        softmax_temperature=args.softmax_temperature,
         num_negatives=args.num_negatives,
         score_type=args.score_type,
     )

@@ -19,7 +19,7 @@ import torch.optim as optim
 
 from src.dataset import InteractionData
 from src.sampler import BPRSampler
-from src.loss import BPRLoss, CosineContrastiveLoss
+from src.loss import BPRLoss, CosineContrastiveLoss, CosineSoftmaxLoss
 from src.metrics import evaluate_model
 
 
@@ -38,9 +38,10 @@ class TrainConfig:
     seed: int = 42
     device: str = "cpu"
     # Loss configuration
-    loss_type: str = "bpr"  # "bpr" or "ccl"
+    loss_type: str = "bpr"  # "bpr", "ccl", or "cosine_softmax"
     ccl_margin: float = 0.8
     ccl_negative_weight: float = 10.0
+    softmax_temperature: float = 0.1
     num_negatives: int = 1
     score_type: str = "dot"  # "dot" or "cosine"
 
@@ -77,6 +78,11 @@ class Trainer:
                 negative_weight=config.ccl_negative_weight,
                 reg_weight=config.reg_weight,
             )
+        elif config.loss_type == "cosine_softmax":
+            self.loss_fn = CosineSoftmaxLoss(
+                temperature=config.softmax_temperature,
+                reg_weight=config.reg_weight,
+            )
         else:
             self.loss_fn = BPRLoss(reg_weight=config.reg_weight)
 
@@ -95,7 +101,7 @@ class Trainer:
                 seed=config.seed,
             )
 
-        self.loss_key = "ccl_loss" if config.loss_type == "ccl" else "bpr_loss"
+        self.loss_key = "ccl_loss" if config.loss_type in ("ccl", "cosine_softmax") else "bpr_loss"
         self.history: Dict[str, List[float]] = {
             "epoch": [],
             "train_loss": [],
@@ -122,7 +128,7 @@ class Trainer:
                 batch_u, batch_pos, batch_neg, self.norm_adj
             )
 
-            if self.config.loss_type == "ccl":
+            if self.config.loss_type in ("ccl", "cosine_softmax"):
                 u_final, pos_final, neg_final, u0, pos0, neg0 = model_outputs
                 loss, main_loss, reg = self.loss_fn(u_final, pos_final, neg_final, u0, pos0, neg0)
             else:
@@ -183,7 +189,7 @@ class Trainer:
                     self.history[f"val_{k}"].append(v)
 
                 target_metric = val_metrics.get(self.config.early_stop_metric, 0.0)
-                loss_name = "CCL" if self.config.loss_type == "ccl" else "BPR"
+                loss_name = "Softmax" if self.config.loss_type == "cosine_softmax" else ("CCL" if self.config.loss_type == "ccl" else "BPR")
                 print(
                     f"Epoch {epoch:03d} | "
                     f"Loss: {epoch_loss['train_loss']:.4f} ({loss_name}: {epoch_loss[self.loss_key]:.4f}, Reg: {epoch_loss['reg_loss']:.4f}) | "

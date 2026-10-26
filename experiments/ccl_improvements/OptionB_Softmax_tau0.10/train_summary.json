@@ -1,0 +1,29 @@
+{
+  "config": {
+    "embedding_dim": 64,
+    "num_layers": 3,
+    "learning_rate": 0.001,
+    "reg_weight": 0.0001,
+    "batch_size": 1024,
+    "epochs": 15,
+    "eval_every": 5,
+    "early_stop_patience": 5,
+    "early_stop_metric": "Recall@20",
+    "seed": 42,
+    "device": "cpu",
+    "loss_type": "cosine_softmax",
+    "ccl_margin": 0.8,
+    "ccl_negative_weight": 10.0,
+    "softmax_temperature": 0.1,
+    "num_negatives": 50,
+    "score_type": "cosine"
+  },
+  "best_epoch": 15,
+  "best_val_Recall@20": 0.36175499661656385,
+  "test_metrics": {
+    "Recall@10": 0.22651782898126466,
+    "Recall@20": 0.34783936103466845,
+    "NDCG@10": 0.21790615546764436,
+    "NDCG@20": 0.2507659546990202
+  }
+}

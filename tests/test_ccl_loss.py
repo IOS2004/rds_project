@@ -15,7 +15,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from src.loss import CosineContrastiveLoss
+from src.loss import CosineContrastiveLoss, CosineSoftmaxLoss
 from src.models.lightgcn_ccl import LightGCNCCL
 from src.graph import build_torch_normalized_adjacency
 
@@ -178,3 +178,30 @@ def test_ccl_regularization_scaling():
     expected_reg = reg_weight * (232.0 / (2.0 * B))
 
     assert torch.isclose(reg_loss, torch.tensor(expected_reg), atol=1e-7)
+
+
+def test_cosine_softmax_loss():
+    """Verify CosineSoftmaxLoss computes expected cross-entropy contrastive objective."""
+    loss_fn = CosineSoftmaxLoss(temperature=0.1, reg_weight=0.0)
+
+    # User aligned with positive item (cos = 1.0), orthogonal to negative items (cos = 0.0)
+    u = torch.tensor([[1.0, 0.0]], dtype=torch.float32)
+    pos = torch.tensor([[1.0, 0.0]], dtype=torch.float32)
+    neg = torch.tensor([[[0.0, 1.0], [0.0, -1.0]]], dtype=torch.float32)  # shape (1, 2, 2)
+
+    total_loss, sm_loss, _ = loss_fn(u, pos, neg)
+
+    # logits = [1.0 / 0.1, 0.0 / 0.1, 0.0 / 0.1] = [10.0, 0.0, 0.0]
+    # P(pos) = e^10 / (e^10 + 1 + 1) ~ 1.0
+    # loss = -ln(e^10 / (e^10 + 2)) = ln(1 + 2 * e^-10) ~ 2 * e^-10 ~ 9e-5
+    assert sm_loss.item() < 1e-4
+
+    # When user is orthogonal to pos, but aligned with negative:
+    pos_bad = torch.tensor([[0.0, 1.0]], dtype=torch.float32)
+    neg_bad = torch.tensor([[[1.0, 0.0], [0.0, -1.0]]], dtype=torch.float32)
+    _, sm_loss_bad, _ = loss_fn(u, pos_bad, neg_bad)
+
+    # Bad ranking must have significantly higher loss
+    assert sm_loss_bad.item() > sm_loss.item()
+    assert sm_loss_bad.item() > 5.0
+

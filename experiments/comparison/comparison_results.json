@@ -11,20 +11,18 @@
     "learning_rate": 0.001,
     "reg_weight": 0.0001,
     "batch_size": 1024,
-    "ccl_margin": 0.8,
-    "ccl_negative_weight": 10.0,
     "ccl_num_negatives": 50,
-    "ccl_score_type": "cosine",
-    "candidate_ranking_protocol": "Full catalog unobserved items; observed training items masked to -inf",
     "models_evaluated": [
-      "Baseline (BPR)",
-      "Adaptive (BPR)",
-      "LightGCN-CCL (CCL)"
+      "LightGCN (BPR)",
+      "AdaptiveLightGCN (BPR)",
+      "LightGCN-CCL (m=0.8)",
+      "LightGCN-CCL (m=0.6)",
+      "LightGCN-Softmax (tau=0.15)"
     ]
   },
   "raw_results": [
     {
-      "model": "Baseline",
+      "model": "LightGCN (BPR)",
       "seed": 42,
       "Recall@10": 0.17978800447669552,
       "Recall@20": 0.27110502053370245,
@@ -32,7 +30,7 @@
       "NDCG@20": 0.1856503199290808
     },
     {
-      "model": "Adaptive",
+      "model": "AdaptiveLightGCN (BPR)",
       "seed": 42,
       "Recall@10": 0.18388019779839535,
       "Recall@20": 0.28766857978907545,
@@ -40,7 +38,7 @@
       "NDCG@20": 0.20121890526618355
     },
     {
-      "model": "LightGCN-CCL",
+      "model": "LightGCN-CCL (m=0.8)",
       "seed": 42,
       "Recall@10": 0.23061276104931547,
       "Recall@20": 0.34920705346912934,
@@ -48,7 +46,23 @@
       "NDCG@20": 0.25580447070365225
     },
     {
-      "model": "Baseline",
+      "model": "LightGCN-CCL (m=0.6)",
+      "seed": 42,
+      "Recall@10": 0.23692259581216757,
+      "Recall@20": 0.3489932658999424,
+      "NDCG@10": 0.22647835975975325,
+      "NDCG@20": 0.2548986439705593
+    },
+    {
+      "model": "LightGCN-Softmax (tau=0.15)",
+      "seed": 42,
+      "Recall@10": 0.24396656391136481,
+      "Recall@20": 0.3706299618373476,
+      "NDCG@10": 0.23247769128524773,
+      "NDCG@20": 0.2654591460295586
+    },
+    {
+      "model": "LightGCN (BPR)",
       "seed": 123,
       "Recall@10": 0.17896739851921373,
       "Recall@20": 0.2674717834055555,
@@ -56,7 +70,7 @@
       "NDCG@20": 0.1841390174980398
     },
     {
-      "model": "Adaptive",
+      "model": "AdaptiveLightGCN (BPR)",
       "seed": 123,
       "Recall@10": 0.18128376694573872,
       "Recall@20": 0.28254714974639966,
@@ -64,26 +78,32 @@
       "NDCG@20": 0.19892482912814716
     },
     {
-      "model": "LightGCN-CCL",
+      "model": "LightGCN-CCL (m=0.8)",
       "seed": 123,
       "Recall@10": 0.22210650469712928,
       "Recall@20": 0.34351908021997485,
       "NDCG@10": 0.21983754868868516,
       "NDCG@20": 0.25168780443724426
+    },
+    {
+      "model": "LightGCN-CCL (m=0.6)",
+      "seed": 123,
+      "Recall@10": 0.22657317952052064,
+      "Recall@20": 0.3446314750104401,
+      "NDCG@10": 0.22009654384076383,
+      "NDCG@20": 0.2505698928560391
+    },
+    {
+      "model": "LightGCN-Softmax (tau=0.15)",
+      "seed": 123,
+      "Recall@10": 0.24035208966953314,
+      "Recall@20": 0.36789550028519596,
+      "NDCG@10": 0.23092591575941732,
+      "NDCG@20": 0.26622098691755003
     }
   ],
   "summary": {
-    "Adaptive": {
-      "Recall@10_mean": 0.18258198237206702,
-      "Recall@10_std": 0.0018359538627954577,
-      "Recall@20_mean": 0.28510786476773753,
-      "Recall@20_std": 0.003621397912548541,
-      "NDCG@10_mean": 0.17291689570913388,
-      "NDCG@10_std": 0.002021325006843606,
-      "NDCG@20_mean": 0.20007186719716535,
-      "NDCG@20_std": 0.0016221567937637804
-    },
-    "Baseline": {
+    "LightGCN (BPR)": {
       "Recall@10_mean": 0.17937770149795462,
       "Recall@10_std": 0.0005802560372174536,
       "Recall@20_mean": 0.269288401969629,
@@ -93,7 +113,17 @@
       "NDCG@20_mean": 0.1848946687135603,
       "NDCG@20_std": 0.001068652197412816
     },
-    "LightGCN-CCL": {
+    "AdaptiveLightGCN (BPR)": {
+      "Recall@10_mean": 0.18258198237206702,
+      "Recall@10_std": 0.0018359538627954577,
+      "Recall@20_mean": 0.28510786476773753,
+      "Recall@20_std": 0.003621397912548541,
+      "NDCG@10_mean": 0.17291689570913388,
+      "NDCG@10_std": 0.002021325006843606,
+      "NDCG@20_mean": 0.20007186719716535,
+      "NDCG@20_std": 0.0016221567937637804
+    },
+    "LightGCN-CCL (m=0.8)": {
       "Recall@10_mean": 0.22635963287322236,
       "Recall@10_std": 0.006014831549141988,
       "Recall@20_mean": 0.3463630668445521,
@@ -102,6 +132,26 @@
       "NDCG@10_std": 0.003545065017512318,
       "NDCG@20_mean": 0.2537461375704483,
       "NDCG@20_std": 0.0029109226328590215
+    },
+    "LightGCN-CCL (m=0.6)": {
+      "Recall@10_mean": 0.2317478876663441,
+      "Recall@10_std": 0.007318142441146075,
+      "Recall@20_mean": 0.34681237045519125,
+      "Recall@20_std": 0.0030842519160847663,
+      "NDCG@10_mean": 0.22328745180025855,
+      "NDCG@10_std": 0.004512625312601691,
+      "NDCG@20_mean": 0.25273426841329916,
+      "NDCG@20_std": 0.0030608892671460325
+    },
+    "LightGCN-Softmax (tau=0.15)": {
+      "Recall@10_mean": 0.242159326790449,
+      "Recall@10_std": 0.0025558192468232905,
+      "Recall@20_mean": 0.3692627310612718,
+      "Recall@20_std": 0.0019335563064203053,
+      "NDCG@10_mean": 0.23170180352233252,
+      "NDCG@10_std": 0.0010972709971940051,
+      "NDCG@20_mean": 0.2658400664735543,
+      "NDCG@20_std": 0.000538702858083931
     }
   },
   "learned_weights_per_seed": [

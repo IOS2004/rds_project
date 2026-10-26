@@ -227,3 +227,115 @@ class CosineContrastiveLoss(nn.Module):
         total_loss = ccl_loss + reg_loss
         return total_loss, ccl_loss, reg_loss
 
+
+class CosineSoftmaxLoss(nn.Module):
+    """Cosine Softmax / Sampled InfoNCE Contrastive Loss with L2 Regularization.
+
+    An experimental contrastive objective inspired by softmax-based contrastive learning
+    (e.g., InfoNCE, SimCLR) applied to collaborative filtering representations to overcome
+    the hinge-margin dead zone.
+
+    Formulation:
+        L_softmax(u, i) = -ln( exp(cos(e_u, e_i) / tau) / ( exp(cos(e_u, e_i) / tau) + sum_{j in N} exp(cos(e_u, e_j) / tau) ) )
+
+    where:
+        - cos(e_u, e_i) is the cosine similarity between user u and positive item i.
+        - cos(e_u, e_j) is the cosine similarity between user u and sampled negative item j.
+        - tau is the softmax temperature hyperparameter.
+        - N is the set of sampled negative items.
+
+    Regularization:
+        L_reg = (lambda / (2 * |B|)) * sum_{b in B} (
+            ||e_u^{(0)}||_2^2 + ||e_i^{(0)}||_2^2 + (1 / |N|) * sum_{j in N} ||e_j^{(0)}||_2^2
+        )
+        L_total = L_softmax + L_reg
+    """
+
+    def __init__(
+        self,
+        temperature: float = 0.1,
+        reg_weight: float = 1e-4,
+        eps: float = 1e-8,
+    ) -> None:
+        """Initialize Cosine Softmax Loss.
+
+        Args:
+            temperature: Softmax temperature parameter tau (default: 0.1).
+            reg_weight: L2 regularization strength lambda on initial layer-0 embeddings (default: 1e-4).
+            eps: Numerical stability constant for cosine normalization (default: 1e-8).
+        """
+        super().__init__()
+        if temperature <= 0.0:
+            raise ValueError(f"temperature must be > 0.0, got {temperature}")
+        self.temperature = float(temperature)
+        self.reg_weight = float(reg_weight)
+        self.eps = float(eps)
+
+    def forward(
+        self,
+        u_final: torch.Tensor,
+        pos_final: torch.Tensor,
+        neg_final: torch.Tensor,
+        u_emb0: Optional[torch.Tensor] = None,
+        pos_emb0: Optional[torch.Tensor] = None,
+        neg_emb0: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Compute Cosine Softmax Loss and L2 Regularization.
+
+        Args:
+            u_final: Final propagated user embeddings of shape (batch_size, embedding_dim).
+            pos_final: Final propagated positive item embeddings of shape (batch_size, embedding_dim).
+            neg_final: Final propagated negative item embeddings of shape (batch_size, num_negatives, embedding_dim)
+                       or (batch_size, embedding_dim).
+            u_emb0: Layer-0 initial user embeddings of shape (batch_size, embedding_dim) for L2 reg.
+            pos_emb0: Layer-0 initial positive item embeddings of shape (batch_size, embedding_dim) for L2 reg.
+            neg_emb0: Layer-0 initial negative item embeddings of shape (batch_size, num_negatives, embedding_dim)
+                      or (batch_size, embedding_dim) for L2 reg.
+
+        Returns:
+            total_loss: Scalar total loss = softmax_loss + reg_loss.
+            softmax_loss: Scalar mean cross-entropy contrastive loss.
+            reg_loss: Scalar L2 regularization loss.
+        """
+        batch_size = u_final.shape[0]
+        if batch_size == 0:
+            zero = torch.tensor(0.0, device=u_final.device)
+            return zero, zero, zero
+
+        # Numerically stable L2 normalization
+        u_norm = F.normalize(u_final, p=2, dim=-1, eps=self.eps)
+        pos_norm = F.normalize(pos_final, p=2, dim=-1, eps=self.eps)
+        pos_sim = (u_norm * pos_norm).sum(dim=-1, keepdim=True)  # (B, 1)
+
+        if neg_final.dim() == 2:
+            neg_final = neg_final.unsqueeze(1)
+        neg_norm = F.normalize(neg_final, p=2, dim=-1, eps=self.eps)
+        neg_sim = (u_norm.unsqueeze(1) * neg_norm).sum(dim=-1)  # (B, N)
+
+        # Logits: [pos_sim, neg_sim] / tau
+        # Target index is 0 (the positive item)
+        logits = torch.cat([pos_sim, neg_sim], dim=1) / self.temperature
+        labels = torch.zeros(batch_size, dtype=torch.long, device=u_final.device)
+        softmax_loss = F.cross_entropy(logits, labels)
+
+        # L2 Regularization on initial layer-0 embeddings
+        if (
+            self.reg_weight > 0.0
+            and u_emb0 is not None
+            and pos_emb0 is not None
+            and neg_emb0 is not None
+        ):
+            num_neg = neg_emb0.shape[1] if neg_emb0.dim() == 3 else 1
+            reg_term = (
+                torch.sum(u_emb0.pow(2))
+                + torch.sum(pos_emb0.pow(2))
+                + torch.sum(neg_emb0.pow(2)) / float(num_neg)
+            )
+            reg_loss = self.reg_weight * (reg_term / (2.0 * float(batch_size)))
+        else:
+            reg_loss = torch.tensor(0.0, device=u_final.device, dtype=u_final.dtype)
+
+        total_loss = softmax_loss + reg_loss
+        return total_loss, softmax_loss, reg_loss
+
+
