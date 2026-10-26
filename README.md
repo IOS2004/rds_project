@@ -3,7 +3,10 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
 [![Tests](https://img.shields.io/badge/tests-33%20passed-brightgreen.svg)](tests/)
+[![Report](https://img.shields.io/badge/Report-PDF%20Available-blueviolet.svg)](LightGCN_Project_Report.pdf)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+> **Comprehensive Technical Report:** A publication-grade PDF compilation featuring all theoretical proofs, architectural diagrams, 5-model benchmark tables, dead zone analyses, and representation geometry is available in [`LightGCN_Project_Report.pdf`](LightGCN_Project_Report.pdf) and interactive HTML at [`docs/project_report.html`](docs/project_report.html). Generated via `python scripts/generate_pdf_report.py`.
 
 An educational, modular, and mathematically faithful PyTorch implementation of the seminal LightGCN paper and its contrastive learning adaptation from the SimpleX paper:
 
@@ -223,9 +226,12 @@ graph TD
 
 ```text
 rds_project/
+├── LightGCN_Project_Report.pdf   # Comprehensive 10-page technical report (PDF)
 ├── lightGCN.pdf                  # Original LightGCN paper (He et al., SIGIR 2020)
 ├── simplex.pdf                   # SimpleX research paper (Mao et al., CIKM 2021)
 ├── docs/
+│   ├── LightGCN_Project_Report.pdf# Full publication PDF report
+│   ├── project_report.html       # Standalone self-contained HTML technical report
 │   ├── paper_notes.md            # In-depth notes, mathematical formulations, and symbols
 │   └── system_architecture.png   # End-to-end architectural system diagram (Figure 1)
 ├── data/
@@ -262,7 +268,8 @@ rds_project/
 │   ├── train_lightgcn_ccl.py     # Trains LightGCN-CCL (supports Hinge CCL and Softmax InfoNCE)
 │   ├── run_comparison.py         # Controlled 5-model multi-seed benchmark and publication plots
 │   ├── run_ccl_improvements.py   # Margin calibration and softmax temperature ablation runner
-│   └── generate_diagrams.py      # Generates comprehensive publication-grade visual suite (7 figures)
+│   ├── generate_diagrams.py      # Generates comprehensive publication-grade visual suite (7 figures)
+│   └── generate_pdf_report.py    # Generates HTML and PDF technical report
 ├── experiments/                  # Checkpoints, summaries, comparison CSVs, and plots
 │   ├── comparison/
 │   │   ├── metric_comparison.png                   # Grouped bar chart with error bars (Figure 2)
@@ -676,7 +683,15 @@ To standalone-generate or regenerate the complete suite of publication-quality c
 python scripts/generate_diagrams.py
 ```
 
+To generate the comprehensive, self-contained HTML and 10-page publication PDF technical report:
+
+```bash
+python scripts/generate_pdf_report.py
+```
+
 Artifacts generated:
+- `LightGCN_Project_Report.pdf`: Comprehensive 10-page technical report (PDF).
+- `docs/project_report.html`: Self-contained interactive HTML technical report.
 - `docs/system_architecture.png`: End-to-end framework flowchart (Figure 1).
 - `experiments/comparison/metric_comparison.png`: 5-model comparative grouped bar chart with error bars and value annotations (Figure 2).
 - `experiments/comparison/radar_and_relative_gain.png`: Multi-metric radar chart and relative % gain bar chart over baseline (Figure 3).
@@ -764,15 +779,17 @@ Every training and benchmarking run generates structured artifacts within its re
 
 | Output File | Location | Format | Description |
 | :--- | :--- | :--- | :--- |
+| `LightGCN_Project_Report.pdf` | Root / `docs/` | PDF Document | 10-page comprehensive technical report compiling theory, architecture, benchmarks, dead zone, and ablation curves. |
+| `project_report.html` | `docs/` | Interactive HTML | Standalone, self-contained HTML report with embedded base64 graphics. |
 | `best_model.pt` | Run directories | PyTorch Binary | Serialized state dictionary of best model (by validation Recall@20) and config. |
 | `train_summary.json` | Run directories | JSON | Best epoch, validation score, test set metrics, and total training runtime. |
 | `training_history.csv` | Run directories | CSV | Per-epoch training loss, validation Recall@K, and validation NDCG@K for convergence. |
-| `system_architecture.png` | [`docs/`](docs/) | PNG (300 DPI) | Figure 1: End-to-end framework architecture flowchart. |
-| `metric_comparison.png` | [`experiments/comparison/`](experiments/comparison/) | PNG (300 DPI) | Figure 2: Grouped bar chart with error bars across all 5 evaluated models. |
-| `radar_and_relative_gain.png` | [`experiments/comparison/`](experiments/comparison/) | PNG (300 DPI) | Figure 3: Multi-metric radar chart and relative % gain bar chart over baseline. |
-| `learned_weights.png` | [`experiments/comparison/`](experiments/comparison/) | PNG (300 DPI) | Figure 4: Learned layer aggregation weights $\alpha_k$ for AdaptiveLightGCN across seeds. |
-| `loss_mechanisms_and_dead_zone.png` | [`experiments/comparison/`](experiments/comparison/) | PNG (300 DPI) | Figure 5: Gradient magnitude curves and empirical hinge dead zone distribution. |
-| `ablation_tuning_curves.png` | [`experiments/comparison/`](experiments/comparison/) | PNG (300 DPI) | Figure 6: Dual-axis margin calibration and softmax temperature sensitivity curves. |
-| `representation_similarity_density.png` | [`experiments/comparison/`](experiments/comparison/) | PNG (300 DPI) | Figure 7: Empirical cosine similarity KDE distributions and separation margins. |
-| `comparison_summary.csv` | [`experiments/comparison/`](experiments/comparison/) | CSV | Tabular summary containing mean and standard deviation across seeds. |
-| `comparison_results.json` | [`experiments/comparison/`](experiments/comparison/) | JSON | Machine-readable record containing all per-seed runs and configurations. |
+| `system_architecture.png` | `docs/` | PNG (300 DPI) | Figure 1: End-to-end framework architecture flowchart. |
+| `metric_comparison.png` | `experiments/comparison/` | PNG (300 DPI) | Figure 2: Grouped bar chart with error bars across all 5 evaluated models. |
+| `radar_and_relative_gain.png` | `experiments/comparison/` | PNG (300 DPI) | Figure 3: Multi-metric radar chart and relative % gain bar chart over baseline. |
+| `learned_weights.png` | `experiments/comparison/` | PNG (300 DPI) | Figure 4: Learned layer aggregation weights $\alpha_k$ for AdaptiveLightGCN across seeds. |
+| `loss_mechanisms_and_dead_zone.png` | `experiments/comparison/` | PNG (300 DPI) | Figure 5: Gradient magnitude curves and empirical hinge dead zone distribution. |
+| `ablation_tuning_curves.png` | `experiments/comparison/` | PNG (300 DPI) | Figure 6: Dual-axis margin calibration and softmax temperature sensitivity curves. |
+| `representation_similarity_density.png` | `experiments/comparison/` | PNG (300 DPI) | Figure 7: Empirical cosine similarity KDE distributions and separation margins. |
+| `comparison_summary.csv` | `experiments/comparison/` | CSV | Tabular summary containing mean and standard deviation across seeds. |
+| `comparison_results.json` | `experiments/comparison/` | JSON | Machine-readable record containing all per-seed runs and configurations. |
